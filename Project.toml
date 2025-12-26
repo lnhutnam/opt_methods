@@ -1,6 +1,6 @@
 name = "OptMethods"
 uuid = "550e4208-90ba-559c-a997-847ba616543e"
-authors = ["Le Nhut NAm <nam.lnhut@gmail.com>"]
+authors = ["Le Nhut Nam <nam.lnhut@gmail.com>"]
 version = "0.1.2"
 
 [deps]
