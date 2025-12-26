@@ -1,4 +1,5 @@
 include("../optimizer.jl")
+using Random
 
 """
 Newton algorithm for convex minimization.
@@ -30,7 +31,7 @@ function step!(newton::Newton)
     if newton.optimizer.line_search === nothing
         newton.optimizer.x .-= newton.lr .* inv_hess_grad_prod
     else
-        newton.optimizer.x = newton.optimizer.line_search(newton.optimizer.x, -inv_hess_grad_prod)
+        newton.optimizer.x = newton.optimizer.line_search(gradient=newton.grad, direction=-inv_hess_grad_prod)
     end
 end
 
@@ -42,14 +43,53 @@ function init_run!(newton::Newton, x0; kwargs...)
     newton.hess = zeros(dim, dim)
 end
 
-function run!(newton::Newton, x0; kwargs...)
-    # Override the step! method for the underlying optimizer
-    original_step! = newton.optimizer.step!
-    newton.optimizer.step! = () -> step!(newton)
+function run!(newton::Newton, x0; t_max=Inf, it_max=Inf, ls_it_max=nothing,
+              tqdm_seeds=false, tqdm_iterations=false)
+    if t_max == Inf && it_max == Inf
+        it_max = 100
+        println("Newton: The number of iterations is set to $it_max.")
+    end
 
-    result = run!(newton.optimizer, x0; kwargs...)
+    newton.optimizer.t_max = t_max
+    newton.optimizer.it_max = it_max
 
-    # Restore original step! method
-    newton.optimizer.step! = original_step!
-    return result
+    # Use first seed for single-seed run
+    seed = newton.optimizer.seeds[1]
+    if seed in newton.optimizer.finished_seeds
+        return newton.optimizer.trace
+    end
+
+    newton.optimizer.rng = MersenneTwister(seed)
+    newton.optimizer.seed = seed
+    loss_seed = rand(newton.optimizer.rng, 1:100000)
+    set_seed!(newton.optimizer.loss, loss_seed)
+    init_seed!(newton.optimizer.trace)
+
+    if ls_it_max === nothing
+        newton.optimizer.ls_it_max = it_max
+    else
+        newton.optimizer.ls_it_max = ls_it_max
+    end
+
+    if !newton.optimizer.initialized[seed]
+        init_run!(newton, x0)
+        newton.optimizer.initialized[seed] = true
+        if newton.optimizer.line_search !== nothing
+            reset!(newton.optimizer.line_search, newton.optimizer)
+        end
+    end
+
+    while !check_convergence(newton.optimizer)
+        if newton.optimizer.tolerance > 0
+            newton.optimizer.x_old_tol = copy(newton.optimizer.x)
+        end
+        step!(newton)
+        save_checkpoint!(newton.optimizer)
+    end
+
+    append_seed_results!(newton.optimizer.trace, seed)
+    push!(newton.optimizer.finished_seeds, seed)
+    newton.optimizer.seed = nothing
+
+    return newton.optimizer.trace
 end

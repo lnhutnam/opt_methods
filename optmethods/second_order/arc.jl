@@ -1,5 +1,6 @@
 include("../optimizer.jl")
 using LinearAlgebra
+using Random
 
 mutable struct MockLineSearch
     lr::Union{Float64, Nothing}
@@ -69,6 +70,7 @@ function arc_cubic_solver(x, g, H, M; it_max=100, epsilon=1e-8, loss=nothing)
     end
 
     id_matrix = I(length(g))
+    s_lam = zeros(length(g))  # Initialize s_lam
     for _ in 1:it_max
         # Run bisection on the regularization using conv_criterion
         r_try = (r_min + r_max) / 2
@@ -192,16 +194,56 @@ function init_run!(arc::Arc, x0; kwargs...)
     end
 end
 
-function run!(arc::Arc, x0; kwargs...)
-    # Override the step! method for the underlying optimizer
-    original_step! = arc.optimizer.step!
-    arc.optimizer.step! = () -> step!(arc)
+function run!(arc::Arc, x0; t_max=Inf, it_max=Inf, ls_it_max=nothing,
+              tqdm_seeds=false, tqdm_iterations=false)
+    if t_max == Inf && it_max == Inf
+        it_max = 100
+        println("Arc: The number of iterations is set to $it_max.")
+    end
 
-    result = run!(arc.optimizer, x0; kwargs...)
+    arc.optimizer.t_max = t_max
+    arc.optimizer.it_max = it_max
 
-    # Restore original step! method
-    arc.optimizer.step! = original_step!
-    return result
+    # Use first seed for single-seed run
+    seed = arc.optimizer.seeds[1]
+    if seed in arc.optimizer.finished_seeds
+        return arc.optimizer.trace
+    end
+
+    arc.optimizer.rng = MersenneTwister(seed)
+    arc.optimizer.seed = seed
+    loss_seed = rand(arc.optimizer.rng, 1:100000)
+    set_seed!(arc.optimizer.loss, loss_seed)
+    init_seed!(arc.optimizer.trace)
+
+    if ls_it_max === nothing
+        arc.optimizer.ls_it_max = it_max
+    else
+        arc.optimizer.ls_it_max = ls_it_max
+    end
+
+    if !arc.optimizer.initialized[seed]
+        init_run!(arc, x0)
+        arc.optimizer.initialized[seed] = true
+        if arc.optimizer.line_search !== nothing
+            reset!(arc.optimizer.line_search, arc.optimizer)
+        end
+    end
+
+    while !check_convergence(arc.optimizer)
+        if arc.optimizer.tolerance > 0
+            arc.optimizer.x_old_tol = copy(arc.optimizer.x)
+        end
+        step!(arc)
+        save_checkpoint!(arc.optimizer)
+        update_trace!(arc)
+    end
+
+    append_seed_results!(arc.optimizer.trace, seed)
+    push!(arc.optimizer.finished_seeds, seed)
+    arc.optimizer.seed = nothing
+
+    return arc.optimizer.trace
 end
 
 function update_trace!(arc::Arc)

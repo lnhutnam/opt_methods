@@ -1,4 +1,5 @@
 include("../optimizer.jl")
+using Random
 
 """
     Shuffling(loss; reshuffle=false, prox_every_it=false, lr0=nothing,
@@ -73,7 +74,12 @@ mutable struct Shuffling
         optimizer = Optimizer(loss; kwargs...)
 
         steps_per_epoch = cld(loss.n, batch_size)  # ceiling division
-        epoch_max = optimizer.it_max ÷ steps_per_epoch
+
+        if isfinite(optimizer.it_max)
+            epoch_max = optimizer.it_max ÷ steps_per_epoch
+        else
+            epoch_max = typemax(Int)  # Use max integer for infinite iterations
+        end
 
         if epoch_start_decay == 0 && isfinite(epoch_max)
             epoch_start_decay = 1 + epoch_max ÷ 40
@@ -151,10 +157,10 @@ function should_update_trace(shuf::Shuffling)
             return true
         end
 
-        shuf.optimizer.time_progress = Int((shuf.optimizer.trace_len - shuf.optimizer.save_first_iterations) *
-                                          shuf.optimizer.t / shuf.optimizer.t_max)
-        shuf.optimizer.iterations_progress = Int((shuf.optimizer.trace_len - shuf.optimizer.save_first_iterations) *
-                                                (shuf.optimizer.it / shuf.optimizer.it_max))
+        shuf.optimizer.time_progress = Int(floor((shuf.optimizer.trace_len - shuf.optimizer.save_first_iterations) *
+                                          shuf.optimizer.t / shuf.optimizer.t_max))
+        shuf.optimizer.iterations_progress = Int(floor((shuf.optimizer.trace_len - shuf.optimizer.save_first_iterations) *
+                                                (shuf.optimizer.it / shuf.optimizer.it_max)))
 
         enough_progress = max(shuf.optimizer.time_progress, shuf.optimizer.iterations_progress) > shuf.optimizer.max_progress
         return enough_progress
@@ -168,10 +174,10 @@ function should_update_trace(shuf::Shuffling)
         return false
     end
 
-    shuf.optimizer.time_progress = Int((shuf.optimizer.trace_len - shuf.optimizer.save_first_iterations) *
-                                      shuf.optimizer.t / shuf.optimizer.t_max)
-    shuf.optimizer.iterations_progress = Int((shuf.optimizer.trace_len - shuf.optimizer.save_first_iterations) *
-                                            (shuf.optimizer.it / shuf.optimizer.it_max))
+    shuf.optimizer.time_progress = Int(floor((shuf.optimizer.trace_len - shuf.optimizer.save_first_iterations) *
+                                      shuf.optimizer.t / shuf.optimizer.t_max))
+    shuf.optimizer.iterations_progress = Int(floor((shuf.optimizer.trace_len - shuf.optimizer.save_first_iterations) *
+                                            (shuf.optimizer.it / shuf.optimizer.it_max)))
 
     enough_progress = max(shuf.optimizer.time_progress, shuf.optimizer.iterations_progress) > shuf.optimizer.max_progress
     return enough_progress
@@ -195,6 +201,64 @@ function init_run!(shuf::Shuffling, x0; kwargs...)
     shuf.i = 1
 end
 
-function run!(shuf::Shuffling, x0; kwargs...)
-    return run!(shuf.optimizer, x0; kwargs...)
+function run!(shuf::Shuffling, x0; t_max=Inf, it_max=Inf, ls_it_max=nothing,
+              tqdm_seeds=false, tqdm_iterations=false)
+    if t_max == Inf && it_max == Inf
+        it_max = 100
+        println("Shuffling: The number of iterations is set to $it_max.")
+    end
+
+    shuf.optimizer.t_max = t_max
+    shuf.optimizer.it_max = it_max
+
+    # Use first seed for single-seed run
+    seed = shuf.optimizer.seeds[1]
+    if seed in shuf.optimizer.finished_seeds
+        return shuf.optimizer.trace
+    end
+
+    shuf.optimizer.rng = MersenneTwister(seed)
+    shuf.optimizer.seed = seed
+    loss_seed = rand(shuf.optimizer.rng, 1:100000)
+    set_seed!(shuf.optimizer.loss, loss_seed)
+    init_seed!(shuf.optimizer.trace)
+
+    if ls_it_max === nothing
+        shuf.optimizer.ls_it_max = it_max
+    else
+        shuf.optimizer.ls_it_max = ls_it_max
+    end
+
+    if !shuf.optimizer.initialized[seed]
+        init_run!(shuf, x0)
+        shuf.optimizer.initialized[seed] = true
+        if shuf.optimizer.line_search !== nothing
+            reset!(shuf.optimizer.line_search, shuf.optimizer)
+        end
+    end
+
+    while !check_convergence(shuf.optimizer)
+        if shuf.optimizer.tolerance > 0
+            shuf.optimizer.x_old_tol = copy(shuf.optimizer.x)
+        end
+        step!(shuf)
+
+        # Use custom should_update_trace for shuffling
+        shuf.optimizer.it += 1
+        if shuf.optimizer.line_search !== nothing
+            shuf.optimizer.ls_it = shuf.optimizer.line_search.it
+        end
+        shuf.optimizer.t = time() - shuf.optimizer.t_start
+
+        if should_update_trace(shuf)
+            update_trace!(shuf.optimizer)
+        end
+        shuf.optimizer.max_progress = max(shuf.optimizer.time_progress, shuf.optimizer.iterations_progress)
+    end
+
+    append_seed_results!(shuf.optimizer.trace, seed)
+    push!(shuf.optimizer.finished_seeds, seed)
+    shuf.optimizer.seed = nothing
+
+    return shuf.optimizer.trace
 end

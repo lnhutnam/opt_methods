@@ -1,5 +1,6 @@
 include("../optimizer.jl")
 using LinearAlgebra
+using Random
 
 function ls_cubic_solver(x, g, H, M; it_max=100, epsilon=1e-8, loss=nothing)
     """
@@ -137,16 +138,56 @@ function init_run!(cubic::Cubic, x0; kwargs...)
     end
 end
 
-function run!(cubic::Cubic, x0; kwargs...)
-    # Override the step! method for the underlying optimizer
-    original_step! = cubic.optimizer.step!
-    cubic.optimizer.step! = () -> step!(cubic)
+function run!(cubic::Cubic, x0; t_max=Inf, it_max=Inf, ls_it_max=nothing,
+              tqdm_seeds=false, tqdm_iterations=false)
+    if t_max == Inf && it_max == Inf
+        it_max = 100
+        println("Cubic: The number of iterations is set to $it_max.")
+    end
 
-    result = run!(cubic.optimizer, x0; kwargs...)
+    cubic.optimizer.t_max = t_max
+    cubic.optimizer.it_max = it_max
 
-    # Restore original step! method
-    cubic.optimizer.step! = original_step!
-    return result
+    # Use first seed for single-seed run
+    seed = cubic.optimizer.seeds[1]
+    if seed in cubic.optimizer.finished_seeds
+        return cubic.optimizer.trace
+    end
+
+    cubic.optimizer.rng = MersenneTwister(seed)
+    cubic.optimizer.seed = seed
+    loss_seed = rand(cubic.optimizer.rng, 1:100000)
+    set_seed!(cubic.optimizer.loss, loss_seed)
+    init_seed!(cubic.optimizer.trace)
+
+    if ls_it_max === nothing
+        cubic.optimizer.ls_it_max = it_max
+    else
+        cubic.optimizer.ls_it_max = ls_it_max
+    end
+
+    if !cubic.optimizer.initialized[seed]
+        init_run!(cubic, x0)
+        cubic.optimizer.initialized[seed] = true
+        if cubic.optimizer.line_search !== nothing
+            reset!(cubic.optimizer.line_search, cubic.optimizer)
+        end
+    end
+
+    while !check_convergence(cubic.optimizer)
+        if cubic.optimizer.tolerance > 0
+            cubic.optimizer.x_old_tol = copy(cubic.optimizer.x)
+        end
+        step!(cubic)
+        save_checkpoint!(cubic.optimizer)
+        update_trace!(cubic)
+    end
+
+    append_seed_results!(cubic.optimizer.trace, seed)
+    push!(cubic.optimizer.finished_seeds, seed)
+    cubic.optimizer.seed = nothing
+
+    return cubic.optimizer.trace
 end
 
 function update_trace!(cubic::Cubic)

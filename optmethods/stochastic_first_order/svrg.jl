@@ -1,4 +1,5 @@
 include("../optimizer.jl")
+using Random
 
 """
     SVRG(loss; lr=nothing, batch_size=1, avoid_cache_miss=false,
@@ -108,6 +109,53 @@ function init_run!(svrg::SVRG, x0; kwargs...)
     end
 end
 
-function run!(svrg::SVRG, x0; kwargs...)
-    return run!(svrg.optimizer, x0; kwargs...)
+function run!(svrg::SVRG, x0; t_max=Inf, it_max=Inf, ls_it_max=nothing,
+              tqdm_seeds=false, tqdm_iterations=false)
+    if t_max == Inf && it_max == Inf
+        it_max = 100
+        println("SVRG: The number of iterations is set to $it_max.")
+    end
+
+    svrg.optimizer.t_max = t_max
+    svrg.optimizer.it_max = it_max
+
+    # Use first seed for single-seed run
+    seed = svrg.optimizer.seeds[1]
+    if seed in svrg.optimizer.finished_seeds
+        return svrg.optimizer.trace
+    end
+
+    svrg.optimizer.rng = MersenneTwister(seed)
+    svrg.optimizer.seed = seed
+    loss_seed = rand(svrg.optimizer.rng, 1:100000)
+    set_seed!(svrg.optimizer.loss, loss_seed)
+    init_seed!(svrg.optimizer.trace)
+
+    if ls_it_max === nothing
+        svrg.optimizer.ls_it_max = it_max
+    else
+        svrg.optimizer.ls_it_max = ls_it_max
+    end
+
+    if !svrg.optimizer.initialized[seed]
+        init_run!(svrg, x0)
+        svrg.optimizer.initialized[seed] = true
+        if svrg.optimizer.line_search !== nothing
+            reset!(svrg.optimizer.line_search, svrg.optimizer)
+        end
+    end
+
+    while !check_convergence(svrg.optimizer)
+        if svrg.optimizer.tolerance > 0
+            svrg.optimizer.x_old_tol = copy(svrg.optimizer.x)
+        end
+        step!(svrg)
+        save_checkpoint!(svrg.optimizer)
+    end
+
+    append_seed_results!(svrg.optimizer.trace, seed)
+    push!(svrg.optimizer.finished_seeds, seed)
+    svrg.optimizer.seed = nothing
+
+    return svrg.optimizer.trace
 end

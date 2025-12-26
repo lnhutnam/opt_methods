@@ -1,4 +1,5 @@
 include("../optimizer.jl")
+using Random
 
 """
     StochasticGradientDescent(loss; lr0=nothing, lr_max=Inf, lr_decay_coef=0.0,
@@ -60,9 +61,16 @@ function step!(sgd::StochasticGradientDescent)
         idx .= mod1.(idx, sgd.optimizer.loss.n)
         sgd.grad = stochastic_gradient(sgd.optimizer.loss, sgd.optimizer.x, idx=idx)
     else
-        sgd.grad = stochastic_gradient(sgd.optimizer.loss, sgd.optimizer.x,
-                                      batch_size=sgd.batch_size,
-                                      importance_sampling=sgd.importance_sampling)
+        # Only pass importance_sampling if the loss supports it
+        if hasmethod(stochastic_gradient, (typeof(sgd.optimizer.loss), Vector{Float64}),
+                    (:idx, :batch_size, :replace, :normalization, :importance_sampling, :rng, :return_idx))
+            sgd.grad = stochastic_gradient(sgd.optimizer.loss, sgd.optimizer.x,
+                                          batch_size=sgd.batch_size,
+                                          importance_sampling=sgd.importance_sampling)
+        else
+            sgd.grad = stochastic_gradient(sgd.optimizer.loss, sgd.optimizer.x,
+                                          batch_size=sgd.batch_size)
+        end
     end
 
     denom_const = 1.0 / sgd.lr0
@@ -95,6 +103,53 @@ function init_run!(sgd::StochasticGradientDescent, x0; kwargs...)
     end
 end
 
-function run!(sgd::StochasticGradientDescent, x0; kwargs...)
-    return run!(sgd.optimizer, x0; kwargs...)
+function run!(sgd::StochasticGradientDescent, x0; t_max=Inf, it_max=Inf, ls_it_max=nothing,
+              tqdm_seeds=false, tqdm_iterations=false)
+    if t_max == Inf && it_max == Inf
+        it_max = 100
+        println("StochasticGradientDescent: The number of iterations is set to $it_max.")
+    end
+
+    sgd.optimizer.t_max = t_max
+    sgd.optimizer.it_max = it_max
+
+    # Use first seed for single-seed run
+    seed = sgd.optimizer.seeds[1]
+    if seed in sgd.optimizer.finished_seeds
+        return sgd.optimizer.trace
+    end
+
+    sgd.optimizer.rng = MersenneTwister(seed)
+    sgd.optimizer.seed = seed
+    loss_seed = rand(sgd.optimizer.rng, 1:100000)
+    set_seed!(sgd.optimizer.loss, loss_seed)
+    init_seed!(sgd.optimizer.trace)
+
+    if ls_it_max === nothing
+        sgd.optimizer.ls_it_max = it_max
+    else
+        sgd.optimizer.ls_it_max = ls_it_max
+    end
+
+    if !sgd.optimizer.initialized[seed]
+        init_run!(sgd, x0)
+        sgd.optimizer.initialized[seed] = true
+        if sgd.optimizer.line_search !== nothing
+            reset!(sgd.optimizer.line_search, sgd.optimizer)
+        end
+    end
+
+    while !check_convergence(sgd.optimizer)
+        if sgd.optimizer.tolerance > 0
+            sgd.optimizer.x_old_tol = copy(sgd.optimizer.x)
+        end
+        step!(sgd)
+        save_checkpoint!(sgd.optimizer)
+    end
+
+    append_seed_results!(sgd.optimizer.trace, seed)
+    push!(sgd.optimizer.finished_seeds, seed)
+    sgd.optimizer.seed = nothing
+
+    return sgd.optimizer.trace
 end

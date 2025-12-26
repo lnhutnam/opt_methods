@@ -1,5 +1,6 @@
 include("../optimizer.jl")
 using LinearAlgebra
+using Random
 
 function empirical_hess_lip(grad, grad_old, hess, x, x_old, loss)
     grad_error = grad .- grad_old .- hess * (x .- x_old)
@@ -70,7 +71,7 @@ end
 function step!(reg_newton::RegNewton)
     reg_newton.grad = gradient(reg_newton.optimizer.loss, reg_newton.optimizer.x)
 
-    if reg_newton.adaptive && reg_newton.hess !== nothing && !reg_newton.use_line_search
+    if reg_newton.adaptive && reg_newton.x_old !== nothing && !reg_newton.use_line_search
         reg_newton.hess_lip /= 2
         empirical_lip = empirical_hess_lip(reg_newton.grad, reg_newton.grad_old,
                                          reg_newton.hess, reg_newton.optimizer.x,
@@ -115,16 +116,56 @@ function init_run!(reg_newton::RegNewton, x0; kwargs...)
     end
 end
 
-function run!(reg_newton::RegNewton, x0; kwargs...)
-    # Override the step! method for the underlying optimizer
-    original_step! = reg_newton.optimizer.step!
-    reg_newton.optimizer.step! = () -> step!(reg_newton)
+function run!(reg_newton::RegNewton, x0; t_max=Inf, it_max=Inf, ls_it_max=nothing,
+              tqdm_seeds=false, tqdm_iterations=false)
+    if t_max == Inf && it_max == Inf
+        it_max = 100
+        println("RegNewton: The number of iterations is set to $it_max.")
+    end
 
-    result = run!(reg_newton.optimizer, x0; kwargs...)
+    reg_newton.optimizer.t_max = t_max
+    reg_newton.optimizer.it_max = it_max
 
-    # Restore original step! method
-    reg_newton.optimizer.step! = original_step!
-    return result
+    # Use first seed for single-seed run
+    seed = reg_newton.optimizer.seeds[1]
+    if seed in reg_newton.optimizer.finished_seeds
+        return reg_newton.optimizer.trace
+    end
+
+    reg_newton.optimizer.rng = MersenneTwister(seed)
+    reg_newton.optimizer.seed = seed
+    loss_seed = rand(reg_newton.optimizer.rng, 1:100000)
+    set_seed!(reg_newton.optimizer.loss, loss_seed)
+    init_seed!(reg_newton.optimizer.trace)
+
+    if ls_it_max === nothing
+        reg_newton.optimizer.ls_it_max = it_max
+    else
+        reg_newton.optimizer.ls_it_max = ls_it_max
+    end
+
+    if !reg_newton.optimizer.initialized[seed]
+        init_run!(reg_newton, x0)
+        reg_newton.optimizer.initialized[seed] = true
+        if reg_newton.optimizer.line_search !== nothing
+            reset!(reg_newton.optimizer.line_search, reg_newton.optimizer)
+        end
+    end
+
+    while !check_convergence(reg_newton.optimizer)
+        if reg_newton.optimizer.tolerance > 0
+            reg_newton.optimizer.x_old_tol = copy(reg_newton.optimizer.x)
+        end
+        step!(reg_newton)
+        save_checkpoint!(reg_newton.optimizer)
+        update_trace!(reg_newton)
+    end
+
+    append_seed_results!(reg_newton.optimizer.trace, seed)
+    push!(reg_newton.optimizer.finished_seeds, seed)
+    reg_newton.optimizer.seed = nothing
+
+    return reg_newton.optimizer.trace
 end
 
 function update_trace!(reg_newton::RegNewton)

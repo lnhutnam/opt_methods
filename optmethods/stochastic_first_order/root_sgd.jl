@@ -1,4 +1,5 @@
 include("../optimizer.jl")
+using Random
 
 """
     RootSGD(loss; lr0=nothing, lr_max=Inf, lr_decay_coef=0.0, lr_decay_power=1.0,
@@ -118,6 +119,53 @@ function init_run!(rootsgd::RootSGD, x0; kwargs...)
     end
 end
 
-function run!(rootsgd::RootSGD, x0; kwargs...)
-    return run!(rootsgd.optimizer, x0; kwargs...)
+function run!(rootsgd::RootSGD, x0; t_max=Inf, it_max=Inf, ls_it_max=nothing,
+              tqdm_seeds=false, tqdm_iterations=false)
+    if t_max == Inf && it_max == Inf
+        it_max = 100
+        println("RootSGD: The number of iterations is set to $it_max.")
+    end
+
+    rootsgd.optimizer.t_max = t_max
+    rootsgd.optimizer.it_max = it_max
+
+    # Use first seed for single-seed run
+    seed = rootsgd.optimizer.seeds[1]
+    if seed in rootsgd.optimizer.finished_seeds
+        return rootsgd.optimizer.trace
+    end
+
+    rootsgd.optimizer.rng = MersenneTwister(seed)
+    rootsgd.optimizer.seed = seed
+    loss_seed = rand(rootsgd.optimizer.rng, 1:100000)
+    set_seed!(rootsgd.optimizer.loss, loss_seed)
+    init_seed!(rootsgd.optimizer.trace)
+
+    if ls_it_max === nothing
+        rootsgd.optimizer.ls_it_max = it_max
+    else
+        rootsgd.optimizer.ls_it_max = ls_it_max
+    end
+
+    if !rootsgd.optimizer.initialized[seed]
+        init_run!(rootsgd, x0)
+        rootsgd.optimizer.initialized[seed] = true
+        if rootsgd.optimizer.line_search !== nothing
+            reset!(rootsgd.optimizer.line_search, rootsgd.optimizer)
+        end
+    end
+
+    while !check_convergence(rootsgd.optimizer)
+        if rootsgd.optimizer.tolerance > 0
+            rootsgd.optimizer.x_old_tol = copy(rootsgd.optimizer.x)
+        end
+        step!(rootsgd)
+        save_checkpoint!(rootsgd.optimizer)
+    end
+
+    append_seed_results!(rootsgd.optimizer.trace, seed)
+    push!(rootsgd.optimizer.finished_seeds, seed)
+    rootsgd.optimizer.seed = nothing
+
+    return rootsgd.optimizer.trace
 end
