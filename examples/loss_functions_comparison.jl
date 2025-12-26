@@ -1,4 +1,3 @@
-#!/usr/bin/env julia
 # Comprehensive example showcasing all converted loss functions
 
 using LinearAlgebra, Random, Statistics
@@ -6,7 +5,7 @@ include("../src/OptMethods.jl")
 using .OptMethods
 
 # Set random seed for reproducibility
-Random.seed!(42)
+Random.seed!(11235)
 
 println("Loss Functions Comprehensive Comparison")
 println("=" ^ 60)

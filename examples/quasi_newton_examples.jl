@@ -45,7 +45,7 @@ function test_quasi_newton_methods()
     println("=" ^ 40)
 
     # Generate test data
-    Random.seed!(42)
+    Random.seed!(11235)
     n, d = 100, 5
     X = randn(n, d)
     y = X * randn(d) + 0.1 * randn(n)
@@ -91,7 +91,7 @@ function test_quasi_newton_with_line_search()
     println("=" ^ 40)
 
     # Generate test data
-    Random.seed!(123)
+    Random.seed!(11235)
     n, d = 50, 3
     X = randn(n, d)
     y = rand(0:1, n)
@@ -123,7 +123,7 @@ function test_quasi_newton_hessian_estimates()
 
     # Generate quadratic problem: f(x) = 0.5 * x^T A x + b^T x
     d = 4
-    Random.seed!(456)
+    Random.seed!(11235)
     A = randn(d, d)
     A = A' * A + 0.1 * I(d)  # Make positive definite
     b = randn(d)

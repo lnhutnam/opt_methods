@@ -1,4 +1,3 @@
-#!/usr/bin/env julia
 # Example comparing different first-order optimization methods
 
 using LinearAlgebra, Random
@@ -6,7 +5,7 @@ include("../src/OptMethods.jl")
 using .OptMethods
 
 # Set random seed for reproducibility
-Random.seed!(42)
+Random.seed!(11235)
 
 # Create a simple logistic regression problem
 n, d = 100, 10

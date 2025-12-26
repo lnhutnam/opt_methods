@@ -1,4 +1,3 @@
-#!/usr/bin/env julia
 # Example showcasing different line search methods with gradient descent
 
 using LinearAlgebra, Random
@@ -6,7 +5,7 @@ include("../src/OptMethods.jl")
 using .OptMethods
 
 # Set random seed for reproducibility
-Random.seed!(42)
+Random.seed!(11235)
 
 println("Line Search Methods Comparison")
 println("=" ^ 50)

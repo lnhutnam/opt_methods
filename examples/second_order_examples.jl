@@ -111,7 +111,7 @@ function test_basic_second_order_methods()
     println("=" ^ 40)
 
     # Generate test data for quadratic function
-    Random.seed!(42)
+    Random.seed!(11235)
     n, d = 20, 3
     A = randn(d, d)
     A = A' * A + 0.1 * I(d)  # Make positive definite
@@ -213,7 +213,7 @@ function test_second_order_with_line_search()
     println("=" ^ 40)
 
     # Generate test data for logistic regression
-    Random.seed!(789)
+    Random.seed!(11235)
     n, d = 50, 4
     X = randn(n, d)
     y = rand(0:1, n)
@@ -236,7 +236,7 @@ function test_custom_parameters()
     println("=" ^ 30)
 
     # Simple quadratic for parameter testing
-    Random.seed!(999)
+    Random.seed!(11235)
     d = 3
     A = I(d) + 0.1 * randn(d, d)
     A = A' * A

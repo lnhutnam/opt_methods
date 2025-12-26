@@ -12,7 +12,7 @@ function test_sgd_basic()
     println("=" ^ 40)
 
     # Generate test data
-    Random.seed!(42)
+    Random.seed!(11235)
     n, d = 100, 5
     X = randn(n, d)
     y = randn(n)
@@ -53,7 +53,7 @@ function test_svrg()
     println("=" ^ 45)
 
     # Generate test data
-    Random.seed!(123)
+    Random.seed!(11235)
     n, d = 100, 5
     X = randn(n, d)
     y = rand(0:1, n)
@@ -83,7 +83,7 @@ function test_shuffling()
     println("=" ^ 42)
 
     # Generate test data
-    Random.seed!(456)
+    Random.seed!(11235)
     n, d = 100, 5
     X = randn(n, d)
     y = randn(n)
@@ -128,7 +128,7 @@ function test_root_sgd()
     println("=" ^ 43)
 
     # Generate test data
-    Random.seed!(789)
+    Random.seed!(11235)
     n, d = 100, 5
     X = randn(n, d)
     y = rand(0:1, n)
@@ -158,7 +158,7 @@ function test_batch_sizes()
     println("\n\nTesting Different Batch Sizes")
     println("=" ^ 35)
 
-    Random.seed!(999)
+    Random.seed!(11235)
     n, d = 200, 10
     X = randn(n, d)
     y = randn(n)
