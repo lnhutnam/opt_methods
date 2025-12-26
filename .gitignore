@@ -3,6 +3,7 @@
 *.md
 Manifest.toml
 requirements.txt
+notebooks
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
