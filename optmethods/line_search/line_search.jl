@@ -10,9 +10,3 @@ include("goldstein.jl")
 include("best_grid.jl")
 include("nest_armijo.jl")
 include("reg_newton_ls.jl")
-
-# Export all line search types
-export LineSearch, BaseLineSearch
-export ArmijoLineSearch, WolfeLineSearch, GoldsteinLineSearch
-export BestGridLineSearch, NesterovArmijoLineSearch, RegularizedNewtonLineSearch
-export reset!, it_per_call

@@ -2,7 +2,7 @@ module OptMethods
 
 # Core exports
 export Optimizer, run!, step!, init_run!
-export Oracle, BaseOracle, value, gradient, hessian, smoothness
+export Oracle, BaseOracle, value, gradient, hessian, stochastic_gradient, smoothness
 export Trace, init_seed!, append_seed_results!, compute_loss_of_iterates!, best_loss_value
 export plot_losses!, plot_distances!, save, from_pickle
 export Regularizer, BoundedL2Regularizer, prox, prox_l1, prox_l2
@@ -17,6 +17,10 @@ export Ig
 
 # Stochastic algorithm exports
 export StochasticGradientDescent, SVRG, Shuffling, RootSGD
+
+# Stochastic second-order algorithm exports
+export StochasticNewton, StochasticNewtonCG, StochasticLBFGS
+export NaturalGradient, AdaHessian
 
 # Line search exports
 export LineSearch, BaseLineSearch
@@ -39,19 +43,12 @@ include("../optmethods/loss/loss.jl")
 include("../optmethods/line_search/line_search.jl")
 
 # First order methods
-include("../optmethods/first_order/gd.jl")
-include("../optmethods/first_order/nesterov.jl")
-include("../optmethods/first_order/heavy_ball.jl")
-include("../optmethods/first_order/adagrad.jl")
-include("../optmethods/first_order/polyak.jl")
-include("../optmethods/first_order/ogm.jl")
-include("../optmethods/first_order/adgd.jl")
-include("../optmethods/first_order/adgd_accel.jl")
-include("../optmethods/first_order/rest_nest.jl")
-include("../optmethods/first_order/nest_line.jl")
-include("../optmethods/first_order/ig.jl")
+include("../optmethods/first_order/first_order.jl")
 
 # Stochastic first order methods
 include("../optmethods/stochastic_first_order/stochastic_first_order.jl")
+
+# Stochastic second order methods
+include("../optmethods/stochastic_second_order/stochastic_second_order.jl")
 
 end # module

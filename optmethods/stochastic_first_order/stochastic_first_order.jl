@@ -5,6 +5,3 @@ include("sgd.jl")
 include("svrg.jl")
 include("shuffling.jl")
 include("root_sgd.jl")
-
-# Export all algorithm types
-export StochasticGradientDescent, SVRG, Shuffling, RootSGD

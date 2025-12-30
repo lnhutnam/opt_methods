@@ -18,10 +18,3 @@ include("polyak.jl")
 
 # Incremental/Stochastic methods
 include("ig.jl")
-
-# Export all algorithm types
-export GradientDescent, AdaptiveGradientDescent, AdgdAccel
-export HeavyBall, NesterovAcceleratedGradient, OptimizedGradientMethod
-export RestNest, NestLine
-export AdaGrad, PolyakStepSize
-export Ig
